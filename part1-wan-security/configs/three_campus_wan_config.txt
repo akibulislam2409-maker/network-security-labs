@@ -1,0 +1,165 @@
+############################################################
+# 1. BASIC ROUTER CONFIG (repeat on each router, adjust IPs)
+############################################################
+enable
+conf t
+hostname R_MANGERE              ! change per router
+
+! Enable secret vs non-secure enable password
+enable secret CISCO123
+enable password cisco
+
+! Set domain name (needed for SSH)
+ip domain-name sait.local
+
+! Create local users
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! Configure LAN interface (example Mangere 192.168.10.0/24)
+interface g0/0
+ description LAN_MANGERE
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+
+! Configure WAN interfaces (example /30 links, adjust as needed)
+interface s0/0/0
+ description LINK_TO_HENDERSON
+ ip address 10.0.0.1 255.255.255.252
+ clock rate 64000
+ no shutdown
+
+interface s0/0/1
+ description LINK_TO_GLENINNES
+ ip address 10.0.0.5 255.255.255.252
+ clock rate 64000
+ no shutdown
+
+############################################################
+# 2. RIP V2 ROUTING (repeat on each router, adjust networks)
+############################################################
+router rip
+ version 2
+ no auto-summary
+ network 192.168.10.0      ! this router's LAN
+ network 10.0.0.0          ! all /30 WAN links (10.0.0.x)
+exit
+
+! Verification
+do show ip route
+do show ip protocols
+
+############################################################
+# 3. CONSOLE AND VTY (TELNET + SSH) – ON ROUTERS & SWITCHES
+############################################################
+line console 0
+ password cisco
+ login
+ logging synchronous
+exit
+
+line vty 0 4
+ password telnet123        ! for simple telnet demo
+ login                     ! use line password
+ transport input telnet ssh
+exit
+
+############################################################
+# 4. GENERATE RSA KEYS & ENABLE SSH (ROUTER)
+############################################################
+crypto key generate rsa
+ 1024                      ! key size
+
+ip ssh version 2
+
+! If you prefer username-based login on vty:
+line vty 0 4
+ login local               ! use local usernames
+ transport input telnet ssh
+exit
+
+! Verification
+do show ip ssh
+do show running-config | section line
+do show running-config | include username
+
+############################################################
+# 5. BASIC SWITCH CONFIG (MGMT VLAN + ACCESS)
+############################################################
+enable
+conf t
+hostname S_MANGERE         ! change per switch
+
+! Enable secret vs password
+enable secret CISCO123
+enable password cisco
+
+! Create local users
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! Management VLAN interface
+interface vlan 1
+ ip address 192.168.10.2 255.255.255.0
+ no shutdown
+exit
+
+ip default-gateway 192.168.10.1
+
+! Optional: access ports to PCs
+interface range f0/1 - 24
+ switchport mode access
+ switchport access vlan 1
+ spanning-tree portfast
+exit
+
+! Console and vty on switch
+line console 0
+ password cisco
+ login
+ logging synchronous
+exit
+
+line vty 0 4
+ password telnet123
+ login
+ transport input telnet ssh
+exit
+
+! Generate SSH keys on switch (if supported)
+ip domain-name sait.local
+crypto key generate rsa
+ 1024
+ip ssh version 2
+
+############################################################
+# 6. END HOST (PC) SETTINGS – IN PACKET TRACER GUI
+############################################################
+# On each PC, set manually (Desktop > IP Configuration):
+# Example for Mangere PC:
+#   IP address:      192.168.10.10
+#   Subnet mask:     255.255.255.0
+#   Default gateway: 192.168.10.1
+
+############################################################
+# 7. TESTING COMMANDS (FROM ROUTER OR PC)
+############################################################
+! From routers:
+show ip interface brief
+show ip route
+ping 192.168.20.10          ! PC in Henderson (example)
+ping 192.168.30.10          ! PC in Glen Innes (example)
+
+! From PCs (Command Prompt in Packet Tracer):
+ping 192.168.10.1           ! own router
+ping 192.168.20.1           ! remote router via RIP
+ping 192.168.20.10          ! remote PC
+
+telnet 192.168.10.1         ! telnet to local router
+telnet 192.168.10.2         ! telnet to local switch
+
+ssh -l sshuser 192.168.10.1 ! SSH to router
+ssh -l sshuser 192.168.10.2 ! SSH to switch
+############################################################
+# END OF NOTES
+############################################################

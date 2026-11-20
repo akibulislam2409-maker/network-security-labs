@@ -1,0 +1,291 @@
+############################################################
+# GLOBAL DESIGN (FIGURE B – EXAMPLE ADDRESSES)
+# R1 LAN (PC-A/server):        192.168.10.0/24
+#   R1 G0/1:                    192.168.10.1
+#   PC-A (server):              192.168.10.10
+#
+# R3 LAN 1 (PC-B):              192.168.20.0/24
+#   R3 G0/0:                    192.168.20.1
+#   PC-B:                       192.168.20.10
+#
+# R3 LAN 2 (PC-C):              192.168.30.0/24
+#   R3 G0/1:                    192.168.30.1
+#   PC-C:                       192.168.30.10
+#
+# R1–R2 WAN:                    10.0.0.0/30
+#   R1 S0/0/0:                  10.0.0.1
+#   R2 S0/0/0:                  10.0.0.2
+#
+# R2–R3 WAN:                    10.0.0.4/30
+#   R2 S0/0/1:                  10.0.0.5
+#   R3 S0/0/1:                  10.0.0.6
+############################################################
+
+============================================================
+R1 CONFIG – ROUTER (PC-A SERVER LAN)
+============================================================
+enable
+conf t
+hostname R1
+
+! Secure vs non-secure enable
+enable secret CISCO123
+enable password cisco
+
+ip domain-name sait.local
+
+! Local users (for console/VTY)
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! LAN interface for PC-A/server
+interface g0/1
+ description LAN_PC-A_SERVER
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+
+! WAN towards R2
+interface s0/0/0
+ description LINK_TO_R2
+ ip address 10.0.0.1 255.255.255.252
+ clock rate 64000
+ no shutdown
+
+! RIP routing
+router rip
+ version 2
+ no auto-summary
+ network 192.168.10.0
+ network 10.0.0.0
+exit
+
+! Console & VTY (local auth)
+line console 0
+ password cisco
+ login
+ logging synchronous
+exit
+
+line vty 0 4
+ login local
+ transport input telnet ssh
+exit
+
+! SSH (keys)
+crypto key generate rsa
+ 1024
+ip ssh version 2
+
+end
+write memory
+
+============================================================
+R2 CONFIG – ROUTER (TRANSIT)
+============================================================
+enable
+conf t
+hostname R2
+
+enable secret CISCO123
+enable password cisco
+
+ip domain-name sait.local
+
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! WAN from R1
+interface s0/0/0
+ description LINK_TO_R1
+ ip address 10.0.0.2 255.255.255.252
+ no shutdown
+
+! WAN to R3
+interface s0/0/1
+ description LINK_TO_R3
+ ip address 10.0.0.5 255.255.255.252
+ no shutdown
+
+! RIP
+router rip
+ version 2
+ no auto-summary
+ network 10.0.0.0
+exit
+
+! Console & VTY
+line console 0
+ password cisco
+ login
+ logging synchronous
+exit
+
+line vty 0 4
+ login local
+ transport input telnet ssh
+exit
+
+! SSH
+crypto key generate rsa
+ 1024
+ip ssh version 2
+
+end
+write memory
+
+============================================================
+R3 CONFIG – ROUTER (PC-B, PC-C, AAA LOCAL)
+============================================================
+enable
+conf t
+hostname R3
+
+enable secret CISCO123
+enable password cisco
+
+ip domain-name sait.local
+
+! Local users (will be used by AAA)
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! LAN for PC-B
+interface g0/0
+ description LAN_PC-B
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+
+! LAN for PC-C
+interface g0/1
+ description LAN_PC-C
+ ip address 192.168.30.1 255.255.255.0
+ no shutdown
+
+! WAN from R2
+interface s0/0/1
+ description LINK_TO_R2
+ ip address 10.0.0.6 255.255.255.252
+ no shutdown
+
+! RIP
+router rip
+ version 2
+ no auto-summary
+ network 192.168.20.0
+ network 192.168.30.0
+ network 10.0.0.0
+exit
+
+! ===== AAA LOCAL AUTHENTICATION =====
+aaa new-model
+aaa authentication login CONSOLE local
+aaa authentication login VTY local
+
+line console 0
+ logging synchronous
+ login authentication CONSOLE
+exit
+
+line vty 0 4
+ login authentication VTY
+ transport input telnet ssh
+exit
+
+! SSH
+crypto key generate rsa
+ 1024
+ip ssh version 2
+
+end
+write memory
+
+============================================================
+SWITCH ON R1 SIDE – OPTIONAL MGMT (IF USED)
+============================================================
+enable
+conf t
+hostname SW1_R1
+
+enable secret CISCO123
+enable password cisco
+
+ip domain-name sait.local
+
+username admin secret Admin123
+username sshuser secret Ssh12345
+
+! Management VLAN
+interface vlan 1
+ ip address 192.168.10.2 255.255.255.0
+ no shutdown
+exit
+
+ip default-gateway 192.168.10.1
+
+! Access ports to PCs/Server
+interface range f0/1 - 24
+ switchport mode access
+ switchport access vlan 1
+ spanning-tree portfast
+exit
+
+line console 0
+ password cisco
+ login
+ logging synchronous
+exit
+
+line vty 0 4
+ login local
+ transport input telnet ssh
+exit
+
+crypto key generate rsa
+ 1024
+ip ssh version 2
+
+end
+write memory
+
+============================================================
+PC CONFIGURATIONS (PACKET TRACER GUI – NOT CLI)
+============================================================
+# PC-A (server behind R1):
+#   IP address:      192.168.10.10
+#   Subnet mask:     255.255.255.0
+#   Default gateway: 192.168.10.1
+
+# PC-B (behind R3 G0/0):
+#   IP address:      192.168.20.10
+#   Subnet mask:     255.255.255.0
+#   Default gateway: 192.168.20.1
+
+# PC-C (behind R3 G0/1):
+#   IP address:      192.168.30.10
+#   Subnet mask:     255.255.255.0
+#   Default gateway: 192.168.30.1
+
+============================================================
+TEST COMMANDS (FROM DEVICES)
+============================================================
+! On each router
+show ip interface brief
+show ip route
+show ip protocols
+
+! From R1: ping towards R3 LANs
+ping 192.168.20.10
+ping 192.168.30.10
+
+! From R3: ping towards server
+ping 192.168.10.10
+
+! From PCs (Command Prompt)
+ping 192.168.10.10        # from PC-B/PC-C to server PC-A
+telnet 192.168.10.1       # manage R1
+ssh -l sshuser 192.168.10.1
+telnet 192.168.20.1       # manage R3 via AAA
+ssh -l sshuser 192.168.20.1
+############################################################
+# END OF FIGURE B NOTES (PC-A AS SERVER)
+############################################################
